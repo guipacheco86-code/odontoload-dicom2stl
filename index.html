@@ -311,39 +311,29 @@ async function loadDicomFiles(fileList) {
   if (!files.length) { alert('Nenhum arquivo DICOM encontrado.'); return; }
   setStatus('Lendo DICOM...');
   showP(0);
+
+  // FASE 1: metadados rápidos (parse até antes do pixelData — memória baixa)
   let metas = [];
   let done = 0;
   for (const f of files) {
     try {
       const buf = new Uint8Array(await f.arrayBuffer());
-      const ds = dicomParser.parseDicom(buf);
-      const pxEl = ds.elements['x7fe00010']; // PixelData
-      if (!pxEl) { console.error('sem pixelData', f.name); continue; }
-      let raw;
-      const ts = ds.string('x00020010'); // TransferSyntaxUID
-      if (ts === '1.2.840.10008.1.2.4.57' || ts === '1.2.840.10008.1.2.4.70') {
-        // JPEG Lossless (Processos 14) — decodifica com jpeg-lossless-decoder-js
-        const frame = dicomParser.readEncapsulatedPixelData(ds, pxEl, 0);
-        const decoded = new jpeg.lossless.Decoder().decompress(frame.buffer, frame.byteOffset, frame.length);
-        raw = new Uint8Array(decoded);
-      } else {
-        // sem compressão (Little/Big Endian)
-        raw = new Uint8Array(ds.byteArray.buffer, ds.byteArray.byteOffset + pxEl.dataOffset, pxEl.length);
-      }
+      const ds = dicomParser.parseDicom(buf, { untilTag: 'x7fe00010' });
+      if (!ds.uint16('x00280010')) continue;
       metas.push({
-        ds: ds,
+        file: f,
         rows: ds.uint16('x00280010') || 0,
         cols: ds.uint16('x00280011') || 0,
-        raw: raw,
         bits: ds.uint16('x00280100') || 16,
         signed: (ds.uint16('x00280103') || 0) === 1,
         slope: ds.floatString('x00281053') || 1,
         intercept: ds.floatString('x00281052') || 0,
+        ts: ds.string('x00020010'),
         z: getSliceZ(ds, done)
       });
-    } catch (e) { console.error('parse DICOM falhou', f.name, e.message); }
+    } catch (e) { console.error('meta DICOM falhou', f.name, e.message); }
     done++;
-    if (done % 20 === 0) showP(done / files.length * 100);
+    if (done % 50 === 0) showP(done / files.length * 40);
   }
   if (!metas.length) { setStatus(''); hideP(); alert('Não foi possível ler os arquivos DICOM.'); return; }
 
@@ -370,33 +360,51 @@ async function loadDicomFiles(fileList) {
   const W = Math.ceil(w / factor), H = Math.ceil(h / factor), D = Math.ceil(d / factor);
   const data = new Float32Array(W * H * D);
 
-  // espaçamento real em mm (PixelSpacing + SliceThickness)
+  // espaçamento real em mm (PixelSpacing + SliceThickness) — re-lê a 1ª fatia
   let spXmm = 1, spYmm = 1, spZmm = 1;
+  let iop = null;
   try {
-    const ds0 = metas[0].ds;
+    const buf0 = new Uint8Array(await metas[0].file.arrayBuffer());
+    const ds0 = dicomParser.parseDicom(buf0, { untilTag: 'x7fe00010' });
     const ps = ds0.string('x00280030'); // PixelSpacing
     if (ps) { spXmm = parseFloat(ps.split('\\')[0]) || 1; spYmm = parseFloat(ps.split('\\')[1]) || spXmm; }
     spZmm = ds0.floatString('x00180050') || (d > 1 ? Math.abs(metas[1].z - metas[0].z) : spXmm) || 1;
+    iop = ds0.string('x00200037'); // ImageOrientationPatient
   } catch (e) {}
 
-  // constrói o volume (HU)
+  // FASE 2: leitura com downsample direto no volume (1 fatia por vez — memória baixa)
   const t0 = performance.now();
   for (let zi = 0; zi < d; zi++) {
     const m = metas[zi];
-    const nPix = m.raw.length / (m.bits / 8);
-    const view = m.signed
-      ? new Int16Array(m.raw.buffer, m.raw.byteOffset, nPix)
-      : new Uint16Array(m.raw.buffer, m.raw.byteOffset, nPix);
-    const dz = Math.floor(zi / factor);
-    for (let y = 0; y < h; y += factor) {
-      const dy = Math.floor(y / factor);
-      const rowOff = y * w;
-      const outOff = (dz * H + dy) * W;
-      for (let x = 0; x < w; x += factor) {
-        data[outOff + Math.floor(x / factor)] = view[rowOff + x] * m.slope + m.intercept;
+    try {
+      const buf = new Uint8Array(await m.file.arrayBuffer());
+      const ds = dicomParser.parseDicom(buf);
+      const pxEl = ds.elements['x7fe00010']; // PixelData
+      if (!pxEl) continue;
+      let raw;
+      if (m.ts === '1.2.840.10008.1.2.4.57' || m.ts === '1.2.840.10008.1.2.4.70') {
+        // JPEG Lossless — decodifica
+        const frame = dicomParser.readEncapsulatedPixelData(ds, pxEl, 0);
+        const decoded = new jpeg.lossless.Decoder().decompress(frame.buffer, frame.byteOffset, frame.length);
+        raw = new Uint8Array(decoded);
+      } else {
+        raw = new Uint8Array(ds.byteArray.buffer, ds.byteArray.byteOffset + pxEl.dataOffset, pxEl.length);
       }
-    }
-    showP(20 + (zi / d) * 60);
+      const nPix = raw.length / (m.bits / 8);
+      const view = m.signed
+        ? new Int16Array(raw.buffer, raw.byteOffset, nPix)
+        : new Uint16Array(raw.buffer, raw.byteOffset, nPix);
+      const dz = Math.floor(zi / factor);
+      for (let y = 0; y < h; y += factor) {
+        const dy = Math.floor(y / factor);
+        const rowOff = y * w;
+        const outOff = (dz * H + dy) * W;
+        for (let x = 0; x < w; x += factor) {
+          data[outOff + Math.floor(x / factor)] = view[rowOff + x] * m.slope + m.intercept;
+        }
+      }
+    } catch (e) { console.error('leitura fatia falhou', m.file.name, e.message); }
+    if (zi % 25 === 0) showP(40 + (zi / d) * 55);
   }
 
   volume = {
@@ -407,7 +415,6 @@ async function loadDicomFiles(fileList) {
 
   // orienta o volume anatomicamente (cabeça p/ cima, face p/ frente)
   try {
-    const iop = metas[0].ds.string('x00200037'); // ImageOrientationPatient
     volume = reorientVolume(volume, iop);
   } catch (e) { console.error('reorient falhou', e.message); }
 
