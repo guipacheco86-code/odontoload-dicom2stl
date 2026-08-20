@@ -311,7 +311,7 @@ async function loadDicomFiles(fileList) {
   if (!files.length) { alert('Nenhum arquivo DICOM encontrado.'); return; }
   setStatus('Lendo DICOM...');
   showP(0);
-  const metas = [];
+  let metas = [];
   let done = 0;
   for (const f of files) {
     try {
