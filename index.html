@@ -155,8 +155,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;heigh
     <div class="sec">
       <h4>Extração / Extraction</h4>
       <div class="sl-row">
-        <label><span>Limiar mínimo (HU)</span><span class="v" id="thr-val">400</span></label>
-        <input type="range" id="thr-slider" min="-1000" max="3000" step="10" value="400">
+        <label><span>Limiar mínimo (HU)</span><span class="v" id="thr-val">600</span></label>
+        <input type="range" id="thr-slider" min="-1000" max="3000" step="10" value="600">
       </div>
       <button class="btn" id="btn-download" disabled>⬇ Baixar STL</button>
       <button class="btn sec" id="btn-clear">Limpar</button>
@@ -361,10 +361,10 @@ async function loadDicomFiles(fileList) {
 
   const w = mCols, h = mRows, d = metas.length;
 
-  // downsampling adaptativo: garante ~5M voxels p/ qualidade + fluidez
+  // downsampling adaptativo: garante ~2.5M voxels p/ fluidez + blur suaviza
   let factor = 1;
   const total = w * h * d;
-  const target = 5000000;
+  const target = 2500000;
   while (total / (factor * factor * factor) > target && factor < 8) factor++;
 
   const W = Math.ceil(w / factor), H = Math.ceil(h / factor), D = Math.ceil(d / factor);
@@ -816,7 +816,9 @@ self.onmessage = function (e) {
   if (d.type === 'init') { ET = d.edgeTable; TT = d.triTable; self.postMessage({ type: 'ready' }); return; }
   if (d.type === 'run') {
     const t0 = performance.now();
-    const res = MC(new Float32Array(d.buf), d.w, d.h, d.d, d.sx, d.sy, d.sz, d.thr);
+    const vol = new Float32Array(d.buf);
+    const smooth = blurVolume(vol, d.w, d.h, d.d);
+    const res = MC(smooth, d.w, d.h, d.d, d.sx, d.sy, d.sz, d.thr);
     self.postMessage({
       type: 'result',
       positions: res.positions.buffer,
@@ -826,6 +828,30 @@ self.onmessage = function (e) {
     }, [res.positions.buffer, res.indices.buffer]);
   }
 };
+function blurVolume(data, w, h, d) {
+  const out = new Float32Array(data.length);
+  for (let k = 1; k < d - 1; k++) {
+    const k0 = (k - 1) * h * w, k1 = k * h * w, k2 = (k + 1) * h * w;
+    for (let j = 1; j < h - 1; j++) {
+      const r0 = k0 + (j - 1) * w, r1 = k0 + j * w, r2 = k0 + (j + 1) * w;
+      const r3 = k1 + (j - 1) * w, r4 = k1 + j * w, r5 = k1 + (j + 1) * w;
+      const r6 = k2 + (j - 1) * w, r7 = k2 + j * w, r8 = k2 + (j + 1) * w;
+      for (let i = 1; i < w - 1; i++) {
+        let s = data[r0 + i - 1] + data[r0 + i] + data[r0 + i + 1]
+              + data[r1 + i - 1] + data[r1 + i] + data[r1 + i + 1]
+              + data[r2 + i - 1] + data[r2 + i] + data[r2 + i + 1]
+              + data[r3 + i - 1] + data[r3 + i] + data[r3 + i + 1]
+              + data[r4 + i - 1] + data[r4 + i] + data[r4 + i + 1]
+              + data[r5 + i - 1] + data[r5 + i] + data[r5 + i + 1]
+              + data[r6 + i - 1] + data[r6 + i] + data[r6 + i + 1]
+              + data[r7 + i - 1] + data[r7 + i] + data[r7 + i + 1]
+              + data[r8 + i - 1] + data[r8 + i] + data[r8 + i + 1];
+        out[r4 + i] = s / 27;
+      }
+    }
+  }
+  return out;
+}
 function MC(data, w, h, d, sx, sy, sz, thr) {
   const cornerOffsets = [
     [0,0,0],[1,0,0],[1,1,0],[0,1,0],
