@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OdontoloadViewer · DICOM → STL</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0A1A33;--panel:#0d1e3a;--panel2:#112244;
+  --border:#1e3050;--border2:#253c60;
+  --accent:#1976D2;--accent-dim:#0d2b4f;
+  --text:#EEF1F6;--text2:#AEBED6;--text3:#6E83A6;
+  --r:9px;
+  --mono:'Cascadia Code','Consolas','Courier New',monospace;
+  --sans:'Segoe UI Variable','Segoe UI','Calibri',system-ui,sans-serif;
+  --display:'Segoe UI Variable','Segoe UI','Calibri',system-ui,sans-serif;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px}
+#titlebar{
+  height:46px;background:var(--bg);
+  border-bottom:2px solid var(--accent);
+  background-image:repeating-linear-gradient(0deg,rgba(255,255,255,0.03) 0px,rgba(255,255,255,0.03) 1px,transparent 1px,transparent 11px);
+  display:flex;align-items:center;padding:0 14px;gap:8px;position:relative;z-index:100;user-select:none;
+}
+.logo{display:flex;align-items:center;gap:10px;margin-right:10px;cursor:default}
+.logo-symbol{width:32px;height:32px;border-radius:var(--r);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#1e88e5,#0d47a1);box-shadow:0 2px 8px rgba(25,118,210,.45)}
+.logo-symbol svg{width:20px;height:20px;display:block}
+.logo-text{display:flex;flex-direction:column;line-height:1}
+.logo-name{font-family:var(--display);font-size:16px;font-weight:700;letter-spacing:.03em;color:#fff;line-height:1.1}
+.logo-name span{font-weight:500;color:var(--text2)}
+.logo-tag{font-family:var(--mono);font-size:8px;color:var(--accent);letter-spacing:.3em;text-transform:uppercase;margin-top:2px}
+.sep{width:1px;height:24px;background:var(--border);margin:0 6px;flex-shrink:0}
+.spc{flex:1}
+.nav-link{
+  display:inline-flex;align-items:center;gap:6px;padding:7px 15px;
+  background:var(--accent);color:#fff;border-radius:var(--r);text-decoration:none;
+  font:700 11px var(--sans);letter-spacing:.03em;margin-left:8px;white-space:nowrap;
+  box-shadow:0 2px 8px rgba(25,118,210,.35);transition:opacity .14s;
+}
+.nav-link:hover{opacity:.88}
+.nav-link svg{width:13px;height:13px}
+#app{display:flex;height:calc(100vh - 46px)}
+#viewport{flex:1;position:relative;background:#000;overflow:hidden}
+#viewport canvas{display:block;width:100%;height:100%}
+#side{
+  width:210px;background:var(--panel);border-left:1px solid var(--border);
+  overflow-y:auto;overflow-x:hidden;padding:12px;flex-shrink:0;
+}
+#side::-webkit-scrollbar{width:3px}
+#side::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.sec{margin-bottom:16px}
+.sec h4{font-family:var(--mono);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.18em;margin-bottom:9px;
+  padding-bottom:5px;border-bottom:1px solid var(--border)}
+.sl-row{margin:7px 0 12px}
+.sl-row label{font:10px var(--sans);color:var(--text2);display:flex;justify-content:space-between;margin-bottom:4px}
+.sl-row label .v{color:var(--accent);font-family:var(--mono);font-size:10px}
+input[type=range]{width:100%;-webkit-appearance:none;height:2px;border-radius:1px;background:var(--border2);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 4px rgba(25,118,210,.5)}
+.btn{
+  display:block;width:100%;padding:9px 12px;border-radius:var(--r);cursor:pointer;
+  font:700 12px var(--sans);letter-spacing:.02em;transition:all .15s;text-align:center;
+  background:var(--accent);color:#fff;border:none;box-shadow:0 2px 8px rgba(25,118,210,.35);
+}
+.btn:hover{opacity:.88}
+.btn.sec{margin-top:8px;background:var(--panel2);color:var(--text);border:1px solid var(--border);box-shadow:none}
+.btn.sec:hover{border-color:var(--accent);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.inf-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(30,48,80,.45)}
+.inf-row .l{color:var(--text3);font:10px var(--sans)}
+.inf-row .v{color:var(--text);font:500 10px var(--mono)}
+.note{font:9.5px/1.5 var(--sans);color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
+.note svg{width:11px;height:11px;vertical-align:-2px;margin-right:4px}
+#welcome{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:6vh;z-index:50;background:#000}
+#welcome.hid{display:none}
+.w-logo{width:74px;height:74px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#1e88e5,#0d47a1);box-shadow:0 6px 24px rgba(25,118,210,.4)}
+.w-logo svg{width:44px;height:44px}
+.w-title{font-family:var(--display);font-size:24px;font-weight:700;color:var(--text2);margin-top:12px;letter-spacing:.05em}
+.w-title span{color:var(--text)}
+.w-sub{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.34em;text-transform:uppercase;margin-top:5px;margin-bottom:22px}
+.dropzone{width:400px;max-width:90vw;padding:30px 26px;border:2px dashed var(--border2);border-radius:14px;text-align:center;transition:all .25s;cursor:pointer;background:var(--panel)}
+.dropzone.over{border-color:var(--accent);background:var(--accent-dim);box-shadow:0 0 0 3px rgba(25,118,210,.15)}
+.dropzone p{font:13px var(--sans);color:var(--text2);margin-bottom:16px}
+.dropzone .hl{color:var(--accent);font-weight:700}
+.wb{display:flex;gap:10px;justify-content:center}
+.wbtn{padding:9px 22px;border-radius:var(--r);font:700 12px var(--sans);cursor:pointer;transition:all .15s;border:1px solid var(--border);background:var(--panel2);color:var(--text)}
+.wbtn:hover{border-color:var(--accent);color:#fff}
+.wbtn.p{color:#fff;border-color:var(--accent);background:var(--accent);box-shadow:0 2px 10px rgba(25,118,210,.4)}
+.wbtn.p:hover{opacity:.88}
+.w-about{max-width:560px;margin-top:24px;text-align:center;padding:0 16px}
+.w-about .wa-title{font:600 13px var(--display);color:var(--text2);letter-spacing:.04em;margin-bottom:8px}
+.w-about p{font:11.5px/1.65 var(--sans);color:var(--text3)}
+.w-feats{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 8px;margin:12px 0;list-style:none}
+.w-feats li{background:var(--panel2);border:1px solid var(--border);border-radius:20px;padding:3px 12px;font-size:10.5px;color:var(--text2);white-space:nowrap}
+.w-feats li::before{content:"✓ ";color:var(--accent);font-weight:700}
+#progress{position:absolute;bottom:0;left:0;right:0;height:2px;z-index:60;display:none;background:var(--panel2)}
+#progress .fill{height:100%;background:var(--accent);width:0;transition:width .1s;box-shadow:0 0 8px rgba(25,118,210,.7)}
+#status{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font:9px var(--mono);color:var(--text3);z-index:40;letter-spacing:.04em;opacity:.75;white-space:nowrap}
+@media(max-width:700px){#side{position:absolute;right:0;top:0;bottom:0;z-index:90;width:230px}.dropzone{width:90vw;padding:30px 16px}}
+</style>
+</head>
+<body>
+
+<div id="titlebar">
+  <div class="logo">
+    <div class="logo-symbol">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3.5C9.2 3.5 7.5 5.6 7.5 8.4c0 3 .9 5.6 1.9 8.6.4 1.2.9 2.4 1 3.6.1 1 .6 1.9 1.6 1.9s1.5-.9 1.6-1.9c.1-1.2.6-2.4 1-3.6 1-3 1.9-5.6 1.9-8.6 0-2.8-1.7-4.9-4.5-4.9z"/>
+        <path d="M8.8 8.5h6.4M8.6 12h6.8" opacity=".55"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      <div class="logo-name">Odontoload<span>Viewer</span></div>
+      <div class="logo-tag">DICOM → STL</div>
+    </div>
+  </div>
+  <div class="spc"></div>
+  <a class="nav-link" href="https://odontoload-viewer.onrender.com/viewer/">CBCT Viewer</a>
+</div>
+
+<div id="app">
+  <div id="viewport">
+    <div id="welcome">
+      <div class="w-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3.5C9.2 3.5 7.5 5.6 7.5 8.4c0 3 .9 5.6 1.9 8.6.4 1.2.9 2.4 1 3.6.1 1 .6 1.9 1.6 1.9s1.5-.9 1.6-1.9c.1-1.2.6-2.4 1-3.6 1-3 1.9-5.6 1.9-8.6 0-2.8-1.7-4.9-4.5-4.9z"/>
+          <path d="M8.8 8.5h6.4M8.6 12h6.8" opacity=".5"/>
+        </svg>
+      </div>
+      <div class="w-title">Odontoload<span>Viewer</span></div>
+      <div class="w-sub">DICOM → STL</div>
+      <div class="dropzone" id="dropzone">
+        <p>Arraste a pasta <span class="hl">DICOM</span> aqui<br><span style="font-size:10px;opacity:.7">ou selecione os arquivos .dcm</span></p>
+        <div class="wb"><button class="wbtn p" id="btn-browse">Selecionar arquivos</button></div>
+      </div>
+      <div class="w-about">
+        <div class="wa-title">Converta seu CBCT em modelo 3D</div>
+        <p>Carregue a tomografia (DICOM), ajuste o limiar de densidade e exporte o modelo em STL para impressão 3D, planejamento ou guias cirúrgicos.</p>
+        <ul class="w-feats">
+          <li>100% no navegador</li>
+          <li>Slider de densidade</li>
+          <li>Export STL</li>
+          <li>Sem upload</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="progress"><div class="fill" id="progress-fill"></div></div>
+    <div id="status"></div>
+  </div>
+
+  <div id="side">
+    <div class="sec">
+      <h4>Extração / Extraction</h4>
+      <div class="sl-row">
+        <label><span>Limiar mínimo (HU)</span><span class="v" id="thr-val">400</span></label>
+        <input type="range" id="thr-slider" min="-1000" max="3000" step="10" value="400">
+      </div>
+      <button class="btn" id="btn-download" disabled>⬇ Baixar STL</button>
+      <button class="btn sec" id="btn-clear">Limpar</button>
+    </div>
+
+    <div class="sec">
+      <h4>Informações</h4>
+      <div class="inf-row"><span class="l">Fatias / Slices</span><span class="v" id="i-slices">—</span></div>
+      <div class="inf-row"><span class="l">Dimensão</span><span class="v" id="i-dims">—</span></div>
+      <div class="inf-row"><span class="l">Voxel (mm)</span><span class="v" id="i-voxel">—</span></div>
+      <div class="inf-row"><span class="l">Triângulos</span><span class="v" id="i-tris">—</span></div>
+      <div class="inf-row"><span class="l">Tempo</span><span class="v" id="i-time">—</span></div>
+    </div>
+
+    <div class="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      Processamento 100% local — os arquivos nunca saem do seu computador.
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".dcm,.dicom,application/dicom" multiple style="display:none">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dicom-parser@1.8.21/dist/dicomParser.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// OdontoloadViewer · DICOM → STL (MVP)
+// Le o DICOM no navegador, gera malha 3D por limiar (VTK.js marching
+// cubes) e exporta STL. 100% local — nada sobe pra servidor.
+// ═══════════════════════════════════════════════════════════════
+'use strict';
+
+let scene, camera, renderer, controls, mesh = null;
+let volume = null;          // {data: Float32Array, w, h, d, sx, sy, sz, factor}
+let curTriangles = 0;
+let busy = false;
+let lastPoly = null;
+let lastPoints = null;
+let lastIdx = null;
+
+/* ── Cena Three.js ── */
+function initScene() {
+  const ct = document.getElementById('viewport');
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, ct.clientWidth / ct.clientHeight, 0.1, 5000);
+  camera.position.set(80, -60, 120);
+  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(ct.clientWidth, ct.clientHeight);
+  renderer.setClearColor(0x000000, 1);
+  ct.insertBefore(renderer.domElement, ct.firstChild);
+
+  const key = new THREE.DirectionalLight(0xffffff, 0.75);
+  key.position.set(1, 1.5, 1);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0x8899aa, 0.35);
+  fill.position.set(-1, 0.5, -0.5);
+  scene.add(fill);
+  scene.add(new THREE.HemisphereLight(0x888899, 0x222233, 0.5));
+
+  const grid = new THREE.GridHelper(200, 40, 0x1e3050, 0x141f33);
+  scene.add(grid);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = ct.clientWidth / ct.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(ct.clientWidth, ct.clientHeight);
+  });
+  (function anim() {
+    requestAnimationFrame(anim);
+    renderer.render(scene, camera);
+  })();
+}
+
+/* ── Orbit simples ── */
+class Orbit {
+  constructor(cam, el) {
+    this.camera = cam; this.el = el; this.target = new THREE.Vector3();
+    this._rS = new THREE.Vector2(); this._pS = new THREE.Vector2(); this._st = 0;
+    this._off = new THREE.Vector3().copy(cam.position);
+    this._sph = new THREE.Spherical().setFromVector3(this._off);
+    this._ds = new THREE.Spherical(); this._pan = new THREE.Vector3(); this._zc = 1;
+    el.addEventListener('pointerdown', e => {
+      if (e.button === 0) { this._st = 1; this._rS.set(e.clientX, e.clientY); }
+      else if (e.button === 2) { this._st = 2; this._pS.set(e.clientX, e.clientY); }
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', e => {
+      if (this._st === 1) {
+        this._ds.theta -= 2 * Math.PI * (e.clientX - this._rS.x) / el.clientHeight * 0.8;
+        this._ds.phi   -= 2 * Math.PI * (e.clientY - this._rS.y) / el.clientHeight * 0.8;
+        this._rS.set(e.clientX, e.clientY);
+      } else if (this._st === 2) {
+        const d = this.target.distanceTo(this.camera.position), h = el.clientHeight;
+        const o = new THREE.Vector3();
+        o.setFromMatrixColumn(this.camera.matrix, 0).multiplyScalar(-(e.clientX - this._pS.x) * 1.2 * d / h);
+        this._pan.add(o);
+        o.setFromMatrixColumn(this.camera.matrix, 1).multiplyScalar((e.clientY - this._pS.y) * 1.2 * d / h);
+        this._pan.add(o);
+        this._pS.set(e.clientX, e.clientY);
+      }
+    });
+    const up = e => { if (e.button === 0 || e.button === 2) this._st = 0; };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', e => {
+      e.preventDefault();
+      this._zc *= e.deltaY > 0 ? 0.95 : 1.05;
+    }, { passive: false });
+    el.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  update() {
+    this._off.copy(this.camera.position).sub(this.target);
+    this._sph.setFromVector3(this._off);
+    this._sph.theta += this._ds.theta * 0.1;
+    this._sph.phi   += this._ds.phi * 0.1;
+    this._sph.phi = Math.max(0.05, Math.min(Math.PI - 0.05, this._sph.phi));
+    this._sph.radius = Math.max(1, this._sph.radius * this._zc);
+    this.target.add(this._pan);
+    this._off.setFromSpherical(this._sph);
+    this.camera.position.copy(this.target).add(this._off);
+    this.camera.lookAt(this.target);
+    this._ds.theta *= 0.9; this._ds.phi *= 0.9; this._pan.set(0, 0, 0); this._zc = 1;
+  }
+}
+
+/* ── Carregamento DICOM ── */
+function showP(p) {
+  document.getElementById('progress').style.display = 'block';
+  document.getElementById('progress-fill').style.width = p + '%';
+}
+function hideP() {
+  document.getElementById('progress').style.display = 'none';
+  document.getElementById('progress-fill').style.width = '0%';
+}
+function setStatus(t) { document.getElementById('status').textContent = t || ''; }
+
+function getSliceZ(ds, idx) {
+  const ipp = ds.string('x00200032'); // ImagePositionPatient
+  if (ipp) {
+    const parts = ipp.split('\\');
+    if (parts.length >= 3) { const z = parseFloat(parts[2]); if (isFinite(z)) return z; }
+  }
+  const sl = ds.floatString('x00201041'); // SliceLocation
+  if (sl !== undefined && isFinite(sl)) return sl;
+  return ds.intString('x00200013') || idx; // InstanceNumber
+}
+
+async function loadDicomFiles(fileList) {
+  const files = Array.from(fileList).filter(f => /\.dcm|\.dicom$/i.test(f.name) || f.type.includes('dicom'));
+  if (!files.length) { alert('Nenhum arquivo DICOM encontrado.'); return; }
+  setStatus('Lendo DICOM...');
+  showP(0);
+  const metas = [];
+  let done = 0;
+  for (const f of files) {
+    try {
+      const buf = new Uint8Array(await f.arrayBuffer());
+      const ds = dicomParser.parseDicom(buf);
+      const pxEl = ds.elements['x7fe00010']; // PixelData
+      if (!pxEl) { console.error('sem pixelData', f.name); continue; }
+      const raw = new Uint8Array(ds.byteArray.buffer, ds.byteArray.byteOffset + pxEl.dataOffset, pxEl.length);
+      metas.push({
+        ds: ds,
+        rows: ds.uint16('x00280010') || 0,
+        cols: ds.uint16('x00280011') || 0,
+        raw: raw,
+        bits: ds.uint16('x00280100') || 16,
+        signed: (ds.uint16('x00280103') || 0) === 1,
+        slope: ds.floatString('x00281053') || 1,
+        intercept: ds.floatString('x00281052') || 0,
+        z: getSliceZ(ds, done)
+      });
+    } catch (e) { console.error('parse DICOM falhou', f.name, e.message); }
+    done++;
+    if (done % 20 === 0) showP(done / files.length * 100);
+  }
+  if (!metas.length) { setStatus(''); hideP(); alert('Não foi possível ler os arquivos DICOM.'); return; }
+
+  metas.sort((a, b) => a.z - b.z);
+  const w = metas[0].cols, h = metas[0].rows, d = metas.length;
+
+  // downsampling automático p/ volumes grandes
+  let factor = 1;
+  if (w * h * d > 8000000) factor = 2;
+
+  const W = Math.ceil(w / factor), H = Math.ceil(h / factor), D = Math.ceil(d / factor);
+  const data = new Float32Array(W * H * D);
+
+  // espaçamento real em mm (PixelSpacing + SliceThickness)
+  let spXmm = 1, spYmm = 1, spZmm = 1;
+  try {
+    const ds0 = metas[0].ds;
+    const ps = ds0.string('x00280030'); // PixelSpacing
+    if (ps) { spXmm = parseFloat(ps.split('\\')[0]) || 1; spYmm = parseFloat(ps.split('\\')[1]) || spXmm; }
+    spZmm = ds0.floatString('x00180050') || (d > 1 ? Math.abs(metas[1].z - metas[0].z) : spXmm) || 1;
+  } catch (e) {}
+
+  // constrói o volume (HU)
+  const t0 = performance.now();
+  for (let zi = 0; zi < d; zi++) {
+    const m = metas[zi];
+    const nPix = m.raw.length / (m.bits / 8);
+    const view = m.signed
+      ? new Int16Array(m.raw.buffer, m.raw.byteOffset, nPix)
+      : new Uint16Array(m.raw.buffer, m.raw.byteOffset, nPix);
+    const dz = Math.floor(zi / factor);
+    for (let y = 0; y < h; y += factor) {
+      const dy = Math.floor(y / factor);
+      const rowOff = y * w;
+      const outOff = (dz * H + dy) * W;
+      for (let x = 0; x < w; x += factor) {
+        data[outOff + Math.floor(x / factor)] = view[rowOff + x] * m.slope + m.intercept;
+      }
+    }
+    showP(20 + (zi / d) * 60);
+  }
+
+  volume = {
+    data, w: W, h: H, d: D,
+    sx: spXmm * factor, sy: spYmm * factor, sz: spZmm * factor,
+    factor, originalW: w, originalH: h, originalD: d
+  };
+
+  document.getElementById('i-slices').textContent = d;
+  document.getElementById('i-dims').textContent = w + '×' + h + (factor > 1 ? ' (↓' + factor + '×)' : '');
+  document.getElementById('i-voxel').textContent = spXmm.toFixed(2) + '×' + spYmm.toFixed(2) + '×' + spZmm.toFixed(2);
+  document.getElementById('welcome').classList.add('hid');
+  document.getElementById('btn-download').disabled = false;
+  hideP();
+  setStatus('');
+  rebuildMesh(true);
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+  document.getElementById('i-time').textContent = elapsed + ' s';
+  if (factor > 1) setStatus('Prévia em resolução reduzida (↓' + factor + '×)');
+}
+
+/* ── Marching Cubes (tabelas de Bourke via three.js r128 — domínio público) ── */
+const EDGE_TABLE = [0x0,0x109,0x203,0x30a,0x406,0x50f,0x605,0x70c,0x80c,0x905,0xa0f,0xb06,0xc0a,0xd03,0xe09,0xf00,0x190,0x99,0x393,0x29a,0x596,0x49f,0x795,0x69c,0x99c,0x895,0xb9f,0xa96,0xd9a,0xc93,0xf99,0xe90,0x230,0x339,0x33,0x13a,0x636,0x73f,0x435,0x53c,0xa3c,0xb35,0x83f,0x936,0xe3a,0xf33,0xc39,0xd30,0x3a0,0x2a9,0x1a3,0xaa,0x7a6,0x6af,0x5a5,0x4ac,0xbac,0xaa5,0x9af,0x8a6,0xfaa,0xea3,0xda9,0xca0,0x460,0x569,0x663,0x76a,0x66,0x16f,0x265,0x36c,0xc6c,0xd65,0xe6f,0xf66,0x86a,0x963,0xa69,0xb60,0x5f0,0x4f9,0x7f3,0x6fa,0x1f6,0xff,0x3f5,0x2fc,0xdfc,0xcf5,0xfff,0xef6,0x9fa,0x8f3,0xbf9,0xaf0,0x650,0x759,0x453,0x55a,0x256,0x35f,0x55,0x15c,0xe5c,0xf55,0xc5f,0xd56,0xa5a,0xb53,0x859,0x950,0x7c0,0x6c9,0x5c3,0x4ca,0x3c6,0x2cf,0x1c5,0xcc,0xfcc,0xec5,0xdcf,0xcc6,0xbca,0xac3,0x9c9,0x8c0,0x8c0,0x9c9,0xac3,0xbca,0xcc6,0xdcf,0xec5,0xfcc,0xcc,0x1c5,0x2cf,0x3c6,0x4ca,0x5c3,0x6c9,0x7c0,0x950,0x859,0xb53,0xa5a,0xd56,0xc5f,0xf55,0xe5c,0x15c,0x55,0x35f,0x256,0x55a,0x453,0x759,0x650,0xaf0,0xbf9,0x8f3,0x9fa,0xef6,0xfff,0xcf5,0xdfc,0x2fc,0x3f5,0xff,0x1f6,0x6fa,0x7f3,0x4f9,0x5f0,0xb60,0xa69,0x963,0x86a,0xf66,0xe6f,0xd65,0xc6c,0x36c,0x265,0x16f,0x66,0x76a,0x663,0x569,0x460,0xca0,0xda9,0xea3,0xfaa,0x8a6,0x9af,0xaa5,0xbac,0x4ac,0x5a5,0x6af,0x7a6,0xaa,0x1a3,0x2a9,0x3a0,0xd30,0xc39,0xf33,0xe3a,0x936,0x83f,0xb35,0xa3c,0x53c,0x435,0x73f,0x636,0x13a,0x33,0x339,0x230,0xe90,0xf99,0xc93,0xd9a,0xa96,0xb9f,0x895,0x99c,0x69c,0x795,0x49f,0x596,0x29a,0x393,0x99,0x190,0xf00,0xe09,0xd03,0xc0a,0xb06,0xa0f,0x905,0x80c,0x70c,0x605,0x50f,0x406,0x30a,0x203,0x109,0x0];
+
+// Tri table: para cada case (0-255), triplas de índices de aresta
+const TRI_TABLE = [
+  [],
+  [0,8,3],
+  [0,1,9],
+  [1,8,3,9,8,1],
+  [1,2,10],
+  [0,8,3,1,2,10],
+  [9,2,10,0,2,9],
+  [2,8,3,2,10,8,10,9,8],
+  [3,11,2],
+  [0,11,2,8,11,0],
+  [1,9,0,2,3,11],
+  [1,11,2,1,9,11,9,8,11],
+  [3,10,1,11,10,3],
+  [0,10,1,0,8,10,8,11,10],
+  [3,9,0,3,11,9,11,10,9],
+  [9,8,10,10,8,11],
+  [4,7,8],
+  [4,3,0,7,3,4],
+  [0,1,9,8,4,7],
+  [4,1,9,4,7,1,7,3,1],
+  [1,2,10,8,4,7],
+  [3,4,7,3,0,4,1,2,10],
+  [9,2,10,9,0,2,8,4,7],
+  [2,10,9,2,9,7,2,7,3,7,9,4],
+  [8,4,7,3,11,2],
+  [11,4,7,11,2,4,2,0,4],
+  [9,0,1,8,4,7,2,3,11],
+  [4,7,11,9,4,11,9,11,2,9,2,1],
+  [3,10,1,3,11,10,7,8,4],
+  [1,11,10,1,4,11,1,0,4,7,11,4],
+  [4,7,8,9,0,11,9,11,10,11,0,3],
+  [4,7,11,4,11,9,9,11,10],
+  [9,5,4],
+  [9,5,4,0,8,3],
+  [0,5,4,1,5,0],
+  [8,5,4,8,3,5,3,1,5],
+  [1,2,10,9,5,4],
+  [3,0,8,1,2,10,4,9,5],
+  [5,2,10,5,4,2,4,0,2],
+  [2,10,5,3,2,5,3,5,4,3,4,8],
+  [9,5,4,2,3,11],
+  [0,11,2,0,8,11,4,9,5],
+  [0,5,4,0,1,5,2,3,11],
+  [2,1,5,2,5,8,2,8,11,4,8,5],
+  [10,3,11,10,1,3,9,5,4],
+  [4,9,5,0,8,1,8,10,1,8,11,10],
+  [5,4,0,5,0,11,5,11,10,11,0,3],
+  [5,4,8,5,8,10,10,8,11],
+  [9,7,8,5,7,9],
+  [9,3,0,9,5,3,5,7,3],
+  [0,7,8,0,1,7,1,5,7],
+  [1,5,3,3,5,7],
+  [9,7,8,9,5,7,10,1,2],
+  [10,1,2,9,5,0,5,3,0,5,7,3],
+  [8,0,2,8,2,5,8,5,7,10,5,2],
+  [2,10,5,2,5,3,3,5,7],
+  [7,9,5,7,8,9,3,11,2],
+  [9,5,7,9,7,2,9,2,0,2,7,11],
+  [2,3,11,0,1,8,1,7,8,1,5,7],
+  [11,2,1,11,1,7,7,1,5],
+  [9,5,8,8,5,7,10,1,3,10,3,11],
+  [5,7,0,5,0,9,7,11,0,1,0,10,11,10,0],
+  [11,10,0,11,0,3,10,5,0,8,0,7,5,7,0],
+  [11,10,5,7,11,5],
+  [10,6,5],
+  [0,8,3,5,10,6],
+  [9,0,1,5,10,6],
+  [1,8,3,1,9,8,5,10,6],
+  [1,6,5,2,6,1],
+  [1,6,5,1,2,6,3,0,8],
+  [9,6,5,9,0,6,0,2,6],
+  [5,9,8,5,8,2,5,2,6,3,2,8],
+  [2,3,11,10,6,5],
+  [11,0,8,11,2,0,10,6,5],
+  [0,1,9,2,3,11,5,10,6],
+  [5,10,6,1,9,2,9,11,2,9,8,11],
+  [6,3,11,6,5,3,5,1,3],
+  [0,8,11,0,11,5,0,5,1,5,11,6],
+  [3,11,6,0,3,6,0,6,5,0,5,9],
+  [6,5,9,6,9,11,11,9,8],
+  [5,10,6,4,7,8],
+  [4,3,0,4,7,3,6,5,10],
+  [1,9,0,5,10,6,8,4,7],
+  [10,6,5,1,9,7,1,7,3,7,9,4],
+  [6,1,2,6,5,1,4,7,8],
+  [1,2,5,5,2,6,3,0,4,3,4,7],
+  [8,4,7,9,0,5,0,6,5,0,2,6],
+  [7,3,9,7,9,4,3,2,9,5,9,6,2,6,9],
+  [3,11,2,7,8,4,10,6,5],
+  [5,10,6,4,7,2,4,2,0,2,7,11],
+  [0,1,9,4,7,8,2,3,11,5,10,6],
+  [9,2,1,9,11,2,9,4,11,7,11,4,5,10,6],
+  [8,4,7,3,11,5,3,5,1,5,11,6],
+  [5,1,11,5,11,6,1,0,11,7,11,4,0,4,11],
+  [0,5,9,0,6,5,0,3,6,11,6,3,8,4,7],
+  [6,5,9,6,9,11,4,7,9,7,11,9],
+  [10,4,9,6,4,10],
+  [4,10,6,4,9,10,0,8,3],
+  [10,0,1,10,6,0,6,4,0],
+  [8,3,1,8,1,6,8,6,4,6,1,10],
+  [1,4,9,1,2,4,2,6,4],
+  [3,0,8,1,2,9,2,4,9,2,6,4],
+  [0,2,4,4,2,6],
+  [8,3,2,8,2,4,4,2,6],
+  [10,4,9,10,6,4,11,2,3],
+  [0,8,2,2,8,11,4,9,10,4,10,6],
+  [3,11,2,0,1,6,0,6,4,6,1,10],
+  [6,4,1,6,1,10,4,8,1,2,1,11,8,11,1],
+  [9,6,4,9,3,6,9,1,3,11,6,3],
+  [8,11,1,8,1,0,11,6,1,9,1,4,6,4,1],
+  [3,11,6,3,6,0,0,6,4],
+  [6,4,8,11,6,8],
+  [7,10,6,7,8,10,8,9,10],
+  [0,7,3,0,10,7,0,9,10,6,7,10],
+  [10,6,7,1,10,7,1,7,8,1,8,0],
+  [10,6,7,10,7,1,1,7,3],
+  [1,2,6,1,6,8,1,8,9,8,6,7],
+  [2,6,9,2,9,1,6,7,9,0,9,3,7,3,9],
+  [7,8,0,7,0,6,6,0,2],
+  [7,3,2,6,7,2],
+  [2,3,11,10,6,8,10,8,9,8,6,7],
+  [2,0,7,2,7,11,0,9,7,6,7,10,9,10,7],
+  [1,8,0,1,7,8,1,10,7,6,7,10,2,3,11],
+  [11,2,1,11,1,7,10,6,1,6,7,1],
+  [8,9,6,8,6,7,9,1,6,11,6,3,1,3,6],
+  [0,9,1,11,6,7],
+  [7,8,0,7,0,6,3,11,0,11,6,0],
+  [7,11,6],
+  [7,6,11],
+  [3,0,8,11,7,6],
+  [0,1,9,11,7,6],
+  [8,1,9,8,3,1,11,7,6],
+  [10,1,2,6,11,7],
+  [1,2,10,3,0,8,6,11,7],
+  [2,9,0,2,10,9,6,11,7],
+  [6,11,7,2,10,3,10,8,3,10,9,8],
+  [7,2,3,6,2,7],
+  [7,0,8,7,6,0,6,2,0],
+  [2,7,6,2,3,7,0,1,9],
+  [1,6,2,1,8,6,1,9,8,8,7,6],
+  [10,7,6,10,1,7,1,3,7],
+  [10,7,6,1,7,10,1,8,7,1,0,8],
+  [0,3,7,0,7,10,0,10,9,6,10,7],
+  [7,6,10,7,10,8,8,10,9],
+  [6,8,4,11,8,6],
+  [3,6,11,3,0,6,0,4,6],
+  [8,6,11,8,4,6,9,0,1],
+  [9,4,6,9,6,3,9,3,1,11,3,6],
+  [6,8,4,6,11,8,2,10,1],
+  [1,2,10,3,0,11,0,6,11,0,4,6],
+  [4,11,8,4,6,11,0,2,9,2,10,9],
+  [10,9,3,10,3,2,9,4,3,11,3,6,4,6,3],
+  [8,2,3,8,4,2,4,6,2],
+  [0,4,2,4,6,2],
+  [1,9,0,2,3,4,2,4,6,4,3,8],
+  [1,9,4,1,4,2,2,4,6],
+  [8,1,3,8,6,1,8,4,6,6,10,1],
+  [10,1,0,10,0,6,6,0,4],
+  [4,6,3,4,3,8,6,10,3,0,3,9,10,9,3],
+  [10,9,4,6,10,4],
+  [4,9,5,7,6,11],
+  [0,8,3,4,9,5,11,7,6],
+  [5,0,1,5,4,0,7,6,11],
+  [11,7,6,8,3,4,3,5,4,3,1,5],
+  [9,5,4,10,1,2,7,6,11],
+  [6,11,7,1,2,10,0,8,3,4,9,5],
+  [7,6,11,5,4,10,4,2,10,4,0,2],
+  [3,4,8,3,5,4,3,2,5,10,5,2,11,7,6],
+  [7,2,3,7,6,2,5,4,9],
+  [9,5,4,0,8,6,0,6,2,6,8,7],
+  [3,6,2,3,7,6,1,5,0,5,4,0],
+  [6,2,8,6,8,7,2,1,8,4,8,5,1,5,8],
+  [9,5,4,10,1,6,1,7,6,1,3,7],
+  [1,6,10,1,7,6,1,0,7,8,7,0,9,5,4],
+  [4,0,10,4,10,5,0,3,10,6,10,7,3,7,10],
+  [7,6,10,7,10,8,5,4,10,4,8,10],
+  [6,9,5,6,11,9,11,8,9],
+  [3,6,11,0,6,3,0,5,6,0,9,5],
+  [0,11,8,0,5,11,0,1,5,5,6,11],
+  [6,11,3,6,3,5,5,3,1],
+  [1,2,10,9,5,11,9,11,8,11,5,6],
+  [0,11,3,0,6,11,0,9,6,5,6,9,1,2,10],
+  [11,8,5,11,5,6,8,0,5,10,5,2,0,2,5],
+  [6,11,3,6,3,5,2,10,3,10,5,3],
+  [5,8,9,5,2,8,5,6,2,3,8,2],
+  [9,5,6,9,6,0,0,6,2],
+  [1,5,8,1,8,0,5,6,8,3,8,2,6,2,8],
+  [1,5,6,2,1,6],
+  [1,3,6,1,6,10,3,8,6,5,6,9,8,9,6],
+  [10,1,0,10,0,6,9,5,0,5,6,0],
+  [0,3,8,5,6,10],
+  [10,5,6],
+  [11,5,10,7,5,11],
+  [11,5,10,11,7,5,8,3,0],
+  [5,11,7,5,10,11,1,9,0],
+  [10,7,5,10,11,7,9,8,1,8,3,1],
+  [11,1,2,11,7,1,7,5,1],
+  [0,8,3,1,2,7,1,7,5,7,2,11],
+  [9,7,5,9,2,7,9,0,2,2,11,7],
+  [7,5,2,7,2,11,5,9,2,3,2,8,9,8,2],
+  [2,5,10,2,3,5,3,7,5],
+  [8,2,0,8,5,2,8,7,5,10,2,5],
+  [9,0,1,5,10,3,5,3,7,3,10,2],
+  [9,8,2,9,2,1,8,7,2,10,2,5,7,5,2],
+  [1,3,5,3,7,5],
+  [0,8,7,0,7,1,1,7,5],
+  [9,0,3,9,3,5,5,3,7],
+  [9,8,7,5,9,7],
+  [5,8,4,5,10,8,10,11,8],
+  [5,0,4,5,11,0,5,10,11,11,3,0],
+  [0,1,9,8,4,10,8,10,11,10,4,5],
+  [10,11,4,10,4,5,11,3,4,9,4,1,3,1,4],
+  [2,5,1,2,8,5,2,11,8,4,5,8],
+  [0,4,11,0,11,3,4,5,11,2,11,1,5,1,11],
+  [0,2,5,0,5,9,2,11,5,4,5,8,11,8,5],
+  [9,4,5,2,11,3],
+  [2,5,10,3,5,2,3,4,5,3,8,4],
+  [5,10,2,5,2,4,4,2,0],
+  [3,10,2,3,5,10,3,8,5,4,5,8,0,1,9],
+  [5,10,2,5,2,4,1,9,2,9,4,2],
+  [8,4,5,8,5,3,3,5,1],
+  [0,4,5,1,0,5],
+  [8,4,5,8,5,3,9,0,5,0,3,5],
+  [9,4,5],
+  [4,11,7,4,9,11,9,10,11],
+  [0,8,3,4,9,7,9,11,7,9,10,11],
+  [1,10,11,1,11,4,1,4,0,7,4,11],
+  [3,1,4,3,4,8,1,10,4,7,4,11,10,11,4],
+  [4,11,7,9,11,4,9,2,11,9,1,2],
+  [9,7,4,9,11,7,9,1,11,2,11,1,0,8,3],
+  [11,7,4,11,4,2,2,4,0],
+  [11,7,4,11,4,2,8,3,4,3,2,4],
+  [2,9,10,2,7,9,2,3,7,7,4,9],
+  [9,10,7,9,7,4,10,2,7,8,7,0,2,0,7],
+  [3,7,10,3,10,2,7,4,10,1,10,0,4,0,10],
+  [1,10,2,8,7,4],
+  [4,9,1,4,1,7,7,1,3],
+  [4,9,1,4,1,7,0,8,1,8,7,1],
+  [4,0,3,7,4,3],
+  [4,8,7],
+  [9,10,8,10,11,8],
+  [3,0,9,3,9,11,11,9,10],
+  [0,1,10,0,10,8,8,10,11],
+  [3,1,10,11,3,10],
+  [1,2,11,1,11,9,9,11,8],
+  [3,0,9,3,9,11,1,2,9,2,11,9],
+  [0,2,11,8,0,11],
+  [3,2,11],
+  [2,3,8,2,8,10,10,8,9],
+  [9,10,2,0,9,2],
+  [2,3,8,2,8,10,0,1,8,1,10,8],
+  [1,10,2],
+  [1,3,8,9,1,8],
+  [0,9,1],
+  [0,3,8],
+  [],
+];
+
+/* ── Marching Cubes manual (tabelas de Bourke) ── */
+function marchingCubes(vol, thr) {
+  const { data, w, h, d, sx, sy, sz } = vol;
+  const cornerOffsets = [
+    [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+    [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]
+  ];
+  const edges = [
+    [0, 1], [1, 2], [2, 3], [3, 0],
+    [4, 5], [5, 6], [6, 7], [7, 4],
+    [0, 4], [1, 5], [2, 6], [3, 7]
+  ];
+  const ox = -(w * sx) / 2, oy = -(h * sy) / 2, oz = -(d * sz) / 2;
+  const positions = [];
+  const MAX_TRIS = 1500000;
+  for (let k = 0; k < d - 1; k++) {
+    const kOff = k * w * h, k1Off = (k + 1) * w * h;
+    for (let j = 0; j < h - 1; j++) {
+      const jOff = j * w, j1Off = (j + 1) * w;
+      for (let i = 0; i < w - 1; i++) {
+        const i0 = kOff + jOff + i;
+        const val = [
+          data[i0], data[i0 + 1], data[i0 + w + 1], data[i0 + w],
+          data[i0 + w * h], data[i0 + w * h + 1], data[i0 + w * h + w + 1], data[i0 + w * h + w]
+        ];
+        let cubeindex = 0;
+        if (val[0] < thr) cubeindex |= 1;
+        if (val[1] < thr) cubeindex |= 2;
+        if (val[2] < thr) cubeindex |= 4;
+        if (val[3] < thr) cubeindex |= 8;
+        if (val[4] < thr) cubeindex |= 16;
+        if (val[5] < thr) cubeindex |= 32;
+        if (val[6] < thr) cubeindex |= 64;
+        if (val[7] < thr) cubeindex |= 128;
+        const edgeMask = EDGE_TABLE[cubeindex];
+        if (edgeMask === 0) continue;
+        const verts = new Array(12);
+        for (let e = 0; e < 12; e++) {
+          if (edgeMask & (1 << e)) {
+            const a = edges[e][0], b = edges[e][1];
+            const va = val[a], vb = val[b];
+            const t = (thr - va) / (vb - va);
+            const ca = cornerOffsets[a], cb = cornerOffsets[b];
+            verts[e] = [
+              ox + (i + ca[0] + t * (cb[0] - ca[0])) * sx,
+              oy + (j + ca[1] + t * (cb[1] - ca[1])) * sy,
+              oz + (k + ca[2] + t * (cb[2] - ca[2])) * sz
+            ];
+          }
+        }
+        const tri = TRI_TABLE[cubeindex];
+        for (let t = 0; t < tri.length; t += 3) {
+          const p1 = verts[tri[t]], p2 = verts[tri[t + 1]], p3 = verts[tri[t + 2]];
+          if (!p1 || !p2 || !p3) continue;
+          positions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
+          if (positions.length > MAX_TRIS * 9) {
+            return { tooBig: true };
+          }
+        }
+      }
+    }
+  }
+  const nTri = positions.length / 9;
+  const indices = new Uint32Array(nTri * 3);
+  for (let i = 0; i < indices.length; i++) indices[i] = i;
+  return { positions: new Float32Array(positions), indices };
+}
+
+function rebuildMesh(showTime) {
+  if (!volume || busy) return;
+  busy = true;
+  const thr = parseInt(document.getElementById('thr-slider').value);
+  document.getElementById('thr-val').textContent = thr;
+  const t0 = performance.now();
+  setTimeout(() => {
+    try {
+      const result = marchingCubes(volume, thr);
+      if (result.tooBig) {
+        setStatus('Malha muito grande — aumente o limiar (mín. ' + thr + ' HU)');
+        document.getElementById('i-tris').textContent = '—';
+      } else {
+        applyMesh(result.positions, result.indices);
+        curTriangles = result.indices.length / 3;
+        document.getElementById('i-tris').textContent = (curTriangles / 1000).toFixed(0) + 'k';
+        const el = ((performance.now() - t0) / 1000).toFixed(1);
+        if (showTime) document.getElementById('i-time').textContent = el + ' s';
+        setStatus('');
+      }
+    } catch (e) {
+      console.error(e);
+      setStatus('Erro ao gerar malha: ' + e.message);
+    }
+    busy = false;
+  }, 30);
+}
+
+function applyMesh(pts, idx) {
+  if (mesh) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    mesh = null;
+  }
+  if (!idx.length) return;
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  geom.setIndex(new THREE.Uint32BufferAttribute(idx, 1));
+  geom.computeVertexNormals();
+  const mat = new THREE.MeshPhongMaterial({
+    color: 0xE8E8E8, specular: 0x222222, shininess: 25,
+    side: THREE.DoubleSide, flatShading: true
+  });
+  mesh = new THREE.Mesh(geom, mat);
+  scene.add(mesh);
+}
+
+/* ── Export STL binário ── */
+function exportStl() {
+  if (!mesh) return;
+  const pos = mesh.geometry.attributes.position.array;
+  const idx = mesh.geometry.index.array;
+  const nTri = idx.length / 3;
+  const buf = new ArrayBuffer(84 + nTri * 50);
+  const dv = new DataView(buf);
+  const name = 'OdontoloadViewer_DICOM2STL';
+  for (let i = 0; i < name.length && i < 80; i++) dv.setUint8(i, name.charCodeAt(i));
+  dv.setUint32(80, nTri, true);
+  let o = 84;
+  for (let t = 0; t < nTri; t++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+    const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+    const bx = pos[b * 3], by = pos[b * 3 + 1], bz = pos[b * 3 + 2];
+    const cx = pos[c * 3], cy = pos[c * 3 + 1], cz = pos[c * 3 + 2];
+    const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    dv.setFloat32(o, nx, true); dv.setFloat32(o + 4, ny, true); dv.setFloat32(o + 8, nz, true); o += 12;
+    dv.setFloat32(o, ax, true); dv.setFloat32(o + 4, ay, true); dv.setFloat32(o + 8, az, true); o += 12;
+    dv.setFloat32(o, bx, true); dv.setFloat32(o + 4, by, true); dv.setFloat32(o + 8, bz, true); o += 12;
+    dv.setFloat32(o, cx, true); dv.setFloat32(o + 4, cy, true); dv.setFloat32(o + 8, cz, true); o += 12;
+    dv.setUint16(o, 0, true); o += 2;
+  }
+  return new Blob([buf], { type: 'model/stl' });
+}
+
+/* ── Init ── */
+function init() {
+  initScene();
+  controls = new Orbit(camera, renderer.domElement);
+  (function anim2() { requestAnimationFrame(anim2); controls.update(); })();
+
+  const fi = document.getElementById('file-input');
+  fi.addEventListener('change', e => {
+    if (e.target.files.length) loadDicomFiles(e.target.files);
+    fi.value = '';
+  });
+  document.getElementById('btn-browse').addEventListener('click', () => fi.click());
+
+  const dz = document.getElementById('dropzone');
+  const vp = document.getElementById('viewport');
+  ['dragenter', 'dragover'].forEach(ev => {
+    dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); });
+    vp.addEventListener(ev, e => e.preventDefault());
+  });
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('over')));
+
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    const items = e.dataTransfer.items;
+    const files = [];
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      // pasta: lê recursivamente
+      const entries = [];
+      for (const it of items) { const en = it.webkitGetAsEntry(); if (en) entries.push(en); }
+      walkEntries(entries, files).then(() => loadDicomFiles(files));
+    } else {
+      loadDicomFiles(e.dataTransfer.files);
+    }
+  });
+  vp.addEventListener('drop', e => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length) loadDicomFiles(e.dataTransfer.files);
+  });
+
+  function walkEntries(entries, out) {
+    const tasks = entries.map(en => new Promise(res => {
+      if (en.isFile) {
+        en.file(f => { out.push(f); res(); });
+      } else if (en.isDirectory) {
+        const reader = en.createReader();
+        const all = [];
+        (function readBatch() {
+          reader.readEntries(batch => {
+            if (!batch.length) { walkEntries(all, out).then(res); return; }
+            all.push(...batch);
+            readBatch();
+          });
+        })();
+      } else res();
+    }));
+    return Promise.all(tasks);
+  }
+
+  const slider = document.getElementById('thr-slider');
+  slider.addEventListener('input', () => {
+    document.getElementById('thr-val').textContent = slider.value;
+  });
+  slider.addEventListener('change', () => rebuildMesh(false));
+
+  document.getElementById('btn-download').addEventListener('click', () => {
+    const blob = exportStl();
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'odontoload_modelo.stl';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); mesh = null; }
+    volume = null; curTriangles = 0; lastPoly = null;
+    document.getElementById('welcome').classList.remove('hid');
+    document.getElementById('btn-download').disabled = true;
+    ['i-slices', 'i-dims', 'i-voxel', 'i-tris', 'i-time'].forEach(id => document.getElementById(id).textContent = '—');
+    setStatus('');
+  });
+}
+
+init();
+</script>
+</body>
+</html>
