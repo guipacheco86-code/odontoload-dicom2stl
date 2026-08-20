@@ -339,9 +339,11 @@ async function loadDicomFiles(fileList) {
   metas.sort((a, b) => a.z - b.z);
   const w = metas[0].cols, h = metas[0].rows, d = metas.length;
 
-  // downsampling automático p/ volumes grandes
+  // downsampling adaptativo: garante ~2M voxels p/ render suave (qualquer volume)
   let factor = 1;
-  if (w * h * d > 8000000) factor = 2;
+  const total = w * h * d;
+  const target = 2000000;
+  while (total / (factor * factor * factor) > target && factor < 8) factor++;
 
   const W = Math.ceil(w / factor), H = Math.ceil(h / factor), D = Math.ceil(d / factor);
   const data = new Float32Array(W * H * D);
@@ -671,7 +673,7 @@ function marchingCubes(vol, thr) {
   ];
   const ox = -(w * sx) / 2, oy = -(h * sy) / 2, oz = -(d * sz) / 2;
   const positions = [];
-  const MAX_TRIS = 1500000;
+  const MAX_TRIS = 3500000;
   for (let k = 0; k < d - 1; k++) {
     const kOff = k * w * h, k1Off = (k + 1) * w * h;
     for (let j = 0; j < h - 1; j++) {
@@ -735,7 +737,7 @@ function rebuildMesh(showTime) {
     try {
       const result = marchingCubes(volume, thr);
       if (result.tooBig) {
-        setStatus('Malha muito grande — aumente o limiar (mín. ' + thr + ' HU)');
+        setStatus('Malha muito grande (>2.5M triângulos) — aumente o limiar (atual: ' + thr + ' HU; tente 800-1200 p/ osso/dente)');
         document.getElementById('i-tris').textContent = '—';
       } else {
         applyMesh(result.positions, result.indices);
@@ -771,6 +773,22 @@ function applyMesh(pts, idx) {
   });
   mesh = new THREE.Mesh(geom, mat);
   scene.add(mesh);
+  fitCamera();
+}
+
+/* Enquadra a câmera no modelo (depois do fit, orbit livre) */
+function fitCamera() {
+  if (!mesh) return;
+  const box = new THREE.Box3().setFromObject(mesh);
+  const s = new THREE.Vector3(); box.getSize(s);
+  const c = new THREE.Vector3(); box.getCenter(c);
+  const d = Math.max(s.x, s.y, s.z) * 2.0;
+  controls.target.copy(c);
+  camera.position.set(c.x + d * 0.55, c.y + d * 0.35, c.z + d);
+  camera.lookAt(c);
+  controls._off.copy(camera.position).sub(controls.target);
+  controls._sph.setFromVector3(controls._off);
+  controls._ds.theta = 0; controls._ds.phi = 0; controls._pan.set(0, 0, 0); controls._zc = 1;
 }
 
 /* ── Export STL binário ── */
