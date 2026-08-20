@@ -383,6 +383,12 @@ async function loadDicomFiles(fileList) {
     factor, originalW: w, originalH: h, originalD: d
   };
 
+  // orienta o volume anatomicamente (cabeça p/ cima, face p/ frente)
+  try {
+    const iop = metas[0].ds.string('x00200037'); // ImageOrientationPatient
+    volume = reorientVolume(volume, iop);
+  } catch (e) { console.error('reorient falhou', e.message); }
+
   document.getElementById('i-slices').textContent = d;
   document.getElementById('i-dims').textContent = w + '×' + h + (factor > 1 ? ' (↓' + factor + '×)' : '');
   document.getElementById('i-voxel').textContent = spXmm.toFixed(2) + '×' + spYmm.toFixed(2) + '×' + spZmm.toFixed(2);
@@ -658,6 +664,59 @@ const TRI_TABLE = [
   [0,3,8],
   [],
 ];
+
+/* ── Reorientação anatômica do volume (ImageOrientationPatient) ──
+   DICOM usa LPS: +X=esquerda, +Y=posterior, +Z=superior.
+   Display: Y=cabeça p/ cima (Superior), Z=face p/ frente (Anterior), X=direita. */
+function reorientVolume(vol, iop) {
+  if (!iop) return vol;
+  const v = iop.split('\\').map(parseFloat);
+  if (v.length < 6 || v.some(isNaN)) return vol;
+  const row = [v[0], v[1], v[2]];
+  const col = [v[3], v[4], v[5]];
+  const nrm = [
+    row[1] * col[2] - row[2] * col[1],
+    row[2] * col[0] - row[0] * col[2],
+    row[0] * col[1] - row[1] * col[0]
+  ];
+  const axes = [
+    { vec: row, size: vol.w, sp: vol.sx },
+    { vec: col, size: vol.h, sp: vol.sy },
+    { vec: nrm, size: vol.d, sp: vol.sz }
+  ];
+  const scoreS = axes.map(a => Math.abs(a.vec[2])); // superior = +Z
+  const scoreA = axes.map(a => Math.abs(a.vec[1])); // anterior = -Y
+
+  let iY = 0;
+  for (let a = 1; a < 3; a++) if (scoreS[a] > scoreS[iY]) iY = a;
+  const flipY = axes[iY].vec[2] < 0;
+  const rest = [0, 1, 2].filter(a => a !== iY);
+  let iZ = rest[0];
+  if (scoreA[rest[1]] > scoreA[rest[0]]) iZ = rest[1];
+  const flipZ = axes[iZ].vec[1] > 0;
+  const iX = rest.find(a => a !== iZ);
+  const flipX = axes[iX].vec[0] > 0;
+
+  const axX = axes[iX], axY = axes[iY], axZ = axes[iZ];
+  const Wx = axX.size, Wy = axY.size, Wz = axZ.size;
+  const data = vol.data;
+  const sz0 = vol.w, sz1 = vol.h;
+  const out = new Float32Array(Wx * Wy * Wz);
+  for (let y = 0; y < Wy; y++) {
+    const iy = flipY ? Wy - 1 - y : y;
+    for (let z = 0; z < Wz; z++) {
+      const iz = flipZ ? Wz - 1 - z : z;
+      const base = (z * Wy + y) * Wx;
+      for (let x = 0; x < Wx; x++) {
+        const ix = flipX ? Wx - 1 - x : x;
+        const coords = [0, 0, 0];
+        coords[iX] = ix; coords[iY] = iy; coords[iZ] = iz;
+        out[base + x] = data[coords[0] + coords[1] * sz0 + coords[2] * sz0 * sz1];
+      }
+    }
+  }
+  return { data: out, w: Wx, h: Wy, d: Wz, sx: axX.sp, sy: axY.sp, sz: axZ.sp, factor: vol.factor, originalW: vol.originalW, originalH: vol.originalH, originalD: vol.originalD };
+}
 
 /* ── Marching Cubes manual (tabelas de Bourke) ── */
 function marchingCubes(vol, thr) {
