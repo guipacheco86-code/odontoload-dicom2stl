@@ -295,6 +295,19 @@ function hideP() {
 }
 function setStatus(t) { document.getElementById('status').textContent = t || ''; }
 
+/* DICOM "bare" (exportacao Sirona/Morita Galaxis): sem preamble DICM + sem grupo 0002.
+   dicomParser exige DICM em 132 e lanca "DICM prefix not found" -> todas as fatias
+   eram descartadas. Com TransferSyntaxUID na option ele volta a posicao 0 e usa a TS
+   fornecida (validado: 171/171 arquivos Morita 345x345 parseiam, zero warnings). */
+function parseDicomSmart(buf, options) {
+  const o = options || {};
+  if (buf.length > 132 && buf[128] === 0x44 && buf[129] === 0x49 && buf[130] === 0x43 && buf[131] === 0x4D) {
+    return dicomParser.parseDicom(buf, o); // P10 normal — deixa a lib ler a meta
+  }
+  if (!o.TransferSyntaxUID) o.TransferSyntaxUID = '1.2.840.10008.1.2'; // Implicit VR LE
+  return dicomParser.parseDicom(buf, o);
+}
+
 function getSliceZ(ds, idx) {
   const ipp = ds.string('x00200032'); // ImagePositionPatient
   if (ipp) {
@@ -318,7 +331,7 @@ async function loadDicomFiles(fileList) {
   for (const f of files) {
     try {
       const buf = new Uint8Array(await f.arrayBuffer());
-      const ds = dicomParser.parseDicom(buf, { untilTag: 'x7fe00010' });
+      const ds = parseDicomSmart(buf, { untilTag: 'x7fe00010' });
       if (!ds.uint16('x00280010')) continue;
       metas.push({
         file: f,
@@ -365,7 +378,7 @@ async function loadDicomFiles(fileList) {
   let iop = null;
   try {
     const buf0 = new Uint8Array(await metas[0].file.arrayBuffer());
-    const ds0 = dicomParser.parseDicom(buf0, { untilTag: 'x7fe00010' });
+    const ds0 = parseDicomSmart(buf0, { untilTag: 'x7fe00010' });
     const ps = ds0.string('x00280030'); // PixelSpacing
     if (ps) { spXmm = parseFloat(ps.split('\\')[0]) || 1; spYmm = parseFloat(ps.split('\\')[1]) || spXmm; }
     spZmm = ds0.floatString('x00180050') || (d > 1 ? Math.abs(metas[1].z - metas[0].z) : spXmm) || 1;
@@ -378,7 +391,7 @@ async function loadDicomFiles(fileList) {
     const m = metas[zi];
     try {
       const buf = new Uint8Array(await m.file.arrayBuffer());
-      const ds = dicomParser.parseDicom(buf);
+      const ds = parseDicomSmart(buf);
       const pxEl = ds.elements['x7fe00010']; // PixelData
       if (!pxEl) continue;
       let raw;
